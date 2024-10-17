@@ -1,7 +1,6 @@
 package main
 
 import (
-    "bufio"
     "encoding/csv"
     "errors"
     "fmt"
@@ -208,7 +207,7 @@ func processRecords(records [][]string, hostname, imagedir string, progressBindi
 
     // Collect all image links
     imageLinkSet := make(map[string]struct{})
-    for rowIndex, row := range records[1:] {
+    for _, row := range records[1:] {
         bodyUk := row[headerMap["body_uk"]]
         bodyRu := row[headerMap["body_ru"]]
 
