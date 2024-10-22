@@ -44,6 +44,13 @@ func main() {
 	outputFileEntry.SetPlaceHolder("Output CSV File Name (e.g., output.csv)")
 	outputFileEntry.SetText("output.csv") // Default value
 
+	// Separator selection
+	separatorOptions := []string{"Comma (,)", "Semicolon (;)", "Tab (\\t)"}
+	separatorEntry := widget.NewSelect(separatorOptions, func(value string) {
+		// Handle selection change if needed
+	})
+	separatorEntry.SetSelected("Semicolon (;)") // Default value
+
 	// Progress Bar and Status Label
 	progressBar := widget.NewProgressBarWithData(progressBinding)
 	statusLabel := widget.NewLabelWithData(statusBinding)
@@ -58,6 +65,7 @@ func main() {
 		hostname := hostnameEntry.Text
 		imagedir := imagedirEntry.Text
 		outputFileName := outputFileEntry.Text
+		selectedSeparator := separatorEntry.Selected
 
 		if spreadsheetURL == "" || hostname == "" || imagedir == "" || outputFileName == "" {
 			showError(myWindow, errors.New("Please fill in all required fields"))
@@ -81,7 +89,7 @@ func main() {
 			}
 
 			updateStatus(statusBinding, "Processing records...")
-			err = processRecords(records, hostname, imagedir, outputFileName, progressBinding, statusBinding)
+			err = processRecords(records, hostname, imagedir, outputFileName, selectedSeparator, progressBinding, statusBinding)
 			if err != nil {
 				showError(myWindow, err)
 				updateStatus(statusBinding, "Status: Idle")
@@ -99,6 +107,7 @@ func main() {
 		hostnameEntry,
 		imagedirEntry,
 		outputFileEntry,
+		separatorEntry,
 		processButton,
 		progressBar,
 		statusLabel,
@@ -169,7 +178,7 @@ func fetchCSV(csvURL string) ([][]string, error) {
 }
 
 // processRecords processes the CSV data and downloads images
-func processRecords(records [][]string, hostname, imagedir string, outputFileName string, progressBinding binding.Float, statusBinding binding.String) error {
+func processRecords(records [][]string, hostname, imagedir string, outputFileName string, selectedSeparator string, progressBinding binding.Float, statusBinding binding.String) error {
 	if len(records) < 2 {
 		return errors.New("No data in CSV")
 	}
@@ -253,7 +262,7 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 
 	// Write the modified records back to a CSV file
 	updateStatus(statusBinding, "Writing to output file...")
-	err := writeCSV(records, outputFileName)
+	err := writeCSV(records, outputFileName, selectedSeparator)
 	if err != nil {
 		return err
 	}
@@ -355,7 +364,7 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string) (string, error) {
 }
 
 // writeCSV writes the modified records back to a CSV file
-func writeCSV(records [][]string, outputFileName string) error {
+func writeCSV(records [][]string, outputFileName string, selectedSeparator string) error {
 	file, err := os.Create(outputFileName)
 	if err != nil {
 		return err
@@ -364,6 +373,16 @@ func writeCSV(records [][]string, outputFileName string) error {
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
+
+	// Set the separator based on user selection
+	switch selectedSeparator {
+	case "Comma (,)":
+		writer.Comma = ','
+	case "Semicolon (;)":
+		writer.Comma = ';'
+	case "Tab (\\t)":
+		writer.Comma = '\t'
+	}
 
 	for _, record := range records {
 		if err := writer.Write(record); err != nil {
