@@ -307,12 +307,12 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string) (string, error) {
     filename = strings.Split(filename, "?")[0] // Remove query params
 
     // Ensure 'files' directory exists
-    err = os.MkdirAll("files", os.ModePerm)
+    err = os.MkdirAll("files" + imagedir, os.ModePerm)
     if err != nil {
         return "", err
     }
 
-    filePath := filepath.Join("files", filename)
+    filePath := filepath.Join("files", imagedir, filename)
     relativePath := filepath.ToSlash(imagedir + filename) // For replacement in HTML
 
     // Skip download if file already exists
