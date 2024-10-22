@@ -18,6 +18,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -25,24 +26,25 @@ func main() {
 	myApp := app.New()
 	myWindow := myApp.NewWindow("Google Spreadsheet Image Downloader")
 
-	// Input fields
+	// Input fields with labels
 	urlEntry := widget.NewEntry()
 	urlEntry.SetPlaceHolder("Enter Google Spreadsheet URL")
+	urlLabel := widget.NewLabel("Spreadsheet URL:")
 
 	hostnameEntry := widget.NewEntry()
 	hostnameEntry.SetPlaceHolder("Hostname (e.g., https://site.com.ua)")
 	hostnameEntry.SetText("https://site.com.ua") // Default value
+	hostnameLabel := widget.NewLabel("Images Default Hostname:")
 
 	imagedirEntry := widget.NewEntry()
 	imagedirEntry.SetPlaceHolder("Image Directory (e.g., /content/uploads/images/)")
 	imagedirEntry.SetText("/content/uploads/images/") // Default value
+	imagedirLabel := widget.NewLabel("Directory to Download Files:")
 
-	// Data bindings
-	progressBinding := binding.NewFloat()
-	statusBinding := binding.NewString()
 	outputFileEntry := widget.NewEntry()
 	outputFileEntry.SetPlaceHolder("Output CSV File Name (e.g., output.csv)")
 	outputFileEntry.SetText("output.csv") // Default value
+	outputFileLabel := widget.NewLabel("File with Updated Descriptions:")
 
 	// Separator selection
 	separatorOptions := []string{"Comma (,)", "Semicolon (;)", "Tab (\\t)"}
@@ -50,6 +52,11 @@ func main() {
 		// Handle selection change if needed
 	})
 	separatorEntry.SetSelected("Semicolon (;)") // Default value
+	separatorLabel := widget.NewLabel("CSV Separator:")
+
+	// Data bindings
+	progressBinding := binding.NewFloat()
+	statusBinding := binding.NewString()
 
 	// Progress Bar and Status Label
 	progressBar := widget.NewProgressBarWithData(progressBinding)
@@ -102,12 +109,18 @@ func main() {
 	})
 
 	// Organize UI Elements
+
+	mainbox := container.New(
+		layout.NewFormLayout(),
+		urlLabel, urlEntry,
+		hostnameLabel, hostnameEntry,
+		imagedirLabel, imagedirEntry,
+		outputFileLabel, outputFileEntry,
+		separatorLabel, separatorEntry,
+	)
+
 	content := container.NewVBox(
-		urlEntry,
-		hostnameEntry,
-		imagedirEntry,
-		outputFileEntry,
-		separatorEntry,
+		mainbox,
 		processButton,
 		progressBar,
 		statusLabel,
