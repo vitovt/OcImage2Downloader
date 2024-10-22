@@ -95,37 +95,86 @@ func main() {
 			return
 		}
 
-		go func() {
-			updateStatus(statusBinding, "Fetching CSV data...")
-			csvURL, err := getCSVURL(spreadsheetURL)
-			if err != nil {
-				showError(myWindow, err)
-				updateStatus(statusBinding, "Status: Idle")
-				return
-			}
+		// Function to start processing
+		startProcessing := func() {
+			go func() {
+				updateStatus(statusBinding, "Fetching CSV data...")
+				csvURL, err := getCSVURL(spreadsheetURL)
+				if err != nil {
+					showError(myWindow, err)
+					updateStatus(statusBinding, "Status: Idle")
+					return
+				}
 
-			records, err := fetchCSV(csvURL)
-			if err != nil {
-				showError(myWindow, err)
-				updateStatus(statusBinding, "Status: Idle")
-				return
-			}
+				records, err := fetchCSV(csvURL)
+				if err != nil {
+					showError(myWindow, err)
+					updateStatus(statusBinding, "Status: Idle")
+					return
+				}
 
-			updateStatus(statusBinding, "Processing records...")
-			err = processRecords(records, hostname, imagedir, outputFileName, selectedSeparator, progressBinding, statusBinding)
-			if err != nil {
-				showError(myWindow, err)
-				updateStatus(statusBinding, "Status: Idle")
-				return
-			}
+				updateStatus(statusBinding, "Processing records...")
+				err = processRecords(records, hostname, imagedir, outputFileName, selectedSeparator, progressBinding, statusBinding, myWindow)
+				if err != nil {
+					showError(myWindow, err)
+					updateStatus(statusBinding, "Status: Idle")
+					return
+				}
 
-			updateStatus(statusBinding, "Status: Completed")
-			showInfo(myWindow, "Images downloaded and data processed successfully.\nOutput saved to "+outputFileName)
-		}()
+				updateStatus(statusBinding, "Status: Completed")
+				showInfo(myWindow, "Images downloaded and data processed successfully.\nOutput saved to "+outputFileName)
+			}()
+		}
+
+		// Function to check output file and proceed
+		checkOutputFileAndProcess := func() {
+			if fileExists(outputFileName) {
+				dialog.ShowConfirm("File Exists",
+					fmt.Sprintf("The output file '%s' already exists. Do you want to delete it and proceed?", outputFileName),
+					func(confirmed bool) {
+						if confirmed {
+							err := os.Remove(outputFileName)
+							if err != nil {
+								showError(myWindow, fmt.Errorf("Failed to delete file '%s': %v", outputFileName, err))
+								return
+							}
+							startProcessing()
+						} else {
+							updateStatus(statusBinding, "Operation Aborted")
+							showError(myWindow, fmt.Errorf("File '%s' exists, aborting...", outputFileName))
+							return
+						}
+					}, myWindow)
+			} else {
+				startProcessing()
+			}
+		}
+
+		// Check if image directory exists
+		imageDirPath := filepath.Join("files", imagedir)
+		if dirExists(imageDirPath) {
+			dialog.ShowConfirm("Directory Exists",
+				fmt.Sprintf("The directory '%s' already exists. Do you want to delete it and proceed?", imageDirPath),
+				func(confirmed bool) {
+					if confirmed {
+						err := os.RemoveAll(imageDirPath)
+						if err != nil {
+							showError(myWindow, fmt.Errorf("Failed to delete directory '%s': %v", imageDirPath, err))
+							return
+						}
+						checkOutputFileAndProcess()
+					} else {
+						updateStatus(statusBinding, "Operation Aborted")
+						showError(myWindow, fmt.Errorf("Directory '%s' exists, aborting...", imageDirPath))
+						return
+					}
+				}, myWindow)
+		} else {
+			checkOutputFileAndProcess()
+		}
 	})
 
 	// Organize UI Elements
-
 	mainbox := container.New(
 		layout.NewFormLayout(),
 		urlLabel, urlEntry,
@@ -145,6 +194,21 @@ func main() {
 	myWindow.SetContent(content)
 	myWindow.Resize(fyne.NewSize(800, 600))
 	myWindow.ShowAndRun()
+}
+
+// dirExists checks if a directory exists
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// fileExists checks if a file exists
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
 }
 
 // getCSVURL transforms the Google Spreadsheet URL to its CSV export URL
@@ -207,7 +271,7 @@ func fetchCSV(csvURL string) ([][]string, error) {
 }
 
 // processRecords processes the CSV data and downloads images
-func processRecords(records [][]string, hostname, imagedir string, outputFileName string, selectedSeparator string, progressBinding binding.Float, statusBinding binding.String) error {
+func processRecords(records [][]string, hostname, imagedir string, outputFileName string, selectedSeparator string, progressBinding binding.Float, statusBinding binding.String, myWindow fyne.Window) error {
 	if len(records) < 2 {
 		return errors.New("No data in CSV")
 	}
@@ -262,7 +326,7 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 		wg.Add(1)
 		go func(link string) {
 			defer wg.Done()
-			newPath, err := downloadAndSaveImage(link, hostname, imagedir)
+			newPath, err := downloadAndSaveImage(link, hostname, imagedir, myWindow)
 			if err != nil {
 				fmt.Printf("Error downloading image %s: %v\n", link, err)
 				return
@@ -328,7 +392,7 @@ func replaceImageLinks(htmlContent string, imagePathMap map[string]string) strin
 }
 
 // downloadAndSaveImage downloads an image from a URL and saves it to the desired path
-func downloadAndSaveImage(imageURL, hostname, imagedir string) (string, error) {
+func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Window) (string, error) {
 	// Prepare the image URL
 	if strings.HasPrefix(imageURL, "//") {
 		imageURL = "https:" + imageURL
@@ -345,7 +409,8 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string) (string, error) {
 	filename = strings.Split(filename, "?")[0] // Remove query params
 
 	// Ensure 'files' directory exists
-	err = os.MkdirAll("files"+imagedir, os.ModePerm)
+	imageDirPath := filepath.Join("files", imagedir)
+	err = os.MkdirAll(imageDirPath, os.ModePerm)
 	if err != nil {
 		return "", err
 	}
