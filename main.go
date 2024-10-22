@@ -40,23 +40,13 @@ func main() {
     // Data bindings
     progressBinding := binding.NewFloat()
     statusBinding := binding.NewString()
-    bodyUkData := binding.NewString()
-    bodyRuData := binding.NewString()
+    outputFileEntry := widget.NewEntry()
+    outputFileEntry.SetPlaceHolder("Output CSV File Name (e.g., output.csv)")
+    outputFileEntry.SetText("output.csv") // Default value
 
     // Progress Bar and Status Label
     progressBar := widget.NewProgressBarWithData(progressBinding)
     statusLabel := widget.NewLabelWithData(statusBinding)
-
-    // Text Areas for Modified Data
-    bodyUkText := widget.NewMultiLineEntry()
-    bodyUkText.Bind(bodyUkData)
-    bodyUkText.SetPlaceHolder("Modified body_uk content will appear here")
-    bodyUkText.Disable()
-
-    bodyRuText := widget.NewMultiLineEntry()
-    bodyRuText.Bind(bodyRuData)
-    bodyRuText.SetPlaceHolder("Modified body_ru content will appear here")
-    bodyRuText.Disable()
 
     // Initialize bindings
     progressBinding.Set(0)
@@ -67,8 +57,9 @@ func main() {
         spreadsheetURL := urlEntry.Text
         hostname := hostnameEntry.Text
         imagedir := imagedirEntry.Text
+        outputFileName := outputFileEntry.Text
 
-        if spreadsheetURL == "" || hostname == "" || imagedir == "" {
+        if spreadsheetURL == "" || hostname == "" || imagedir == "" || outputFileName == "" {
             showError(myWindow, errors.New("Please fill in all required fields"))
             return
         }
@@ -90,7 +81,7 @@ func main() {
             }
 
             updateStatus(statusBinding, "Processing records...")
-            err = processRecords(records, hostname, imagedir, progressBinding, statusBinding, bodyUkData, bodyRuData)
+            err = processRecords(records, hostname, imagedir, outputFileName, progressBinding, statusBinding)
             if err != nil {
                 showError(myWindow, err)
                 updateStatus(statusBinding, "Status: Idle")
@@ -98,7 +89,7 @@ func main() {
             }
 
             updateStatus(statusBinding, "Status: Completed")
-            showInfo(myWindow, "Images downloaded and data processed successfully")
+            showInfo(myWindow, "Images downloaded and data processed successfully.\nOutput saved to "+outputFileName)
         }()
     })
 
@@ -107,11 +98,10 @@ func main() {
         urlEntry,
         hostnameEntry,
         imagedirEntry,
+        outputFileEntry,
         processButton,
         progressBar,
         statusLabel,
-        widget.NewLabel("Modified body_uk Data:"),
-        container.NewVSplit(bodyUkText, bodyRuText),
     )
 
     myWindow.SetContent(content)
@@ -179,7 +169,7 @@ func fetchCSV(csvURL string) ([][]string, error) {
 }
 
 // processRecords processes the CSV data and downloads images
-func processRecords(records [][]string, hostname, imagedir string, progressBinding binding.Float, statusBinding binding.String, bodyUkData, bodyRuData binding.String) error {
+func processRecords(records [][]string, hostname, imagedir string, outputFileName string, progressBinding binding.Float, statusBinding binding.String) error {
     if len(records) < 2 {
         return errors.New("No data in CSV")
     }
@@ -201,9 +191,6 @@ func processRecords(records [][]string, hostname, imagedir string, progressBindi
     progressBinding.Set(0)
 
     var allImageLinks []string
-
-    bodyUkResults := make([]string, totalRows)
-    bodyRuResults := make([]string, totalRows)
 
     // Collect all image links
     imageLinkSet := make(map[string]struct{})
@@ -257,16 +244,19 @@ func processRecords(records [][]string, hostname, imagedir string, progressBindi
         newBodyUk := replaceImageLinks(bodyUk, imagePathMap)
         newBodyRu := replaceImageLinks(bodyRu, imagePathMap)
 
-        bodyUkResults[rowIndex] = newBodyUk
-        bodyRuResults[rowIndex] = newBodyRu
+        row[headerMap["body_uk"]] = newBodyUk
+        row[headerMap["body_ru"]] = newBodyRu
 
         // Update progress bar
         progressBinding.Set(float64(rowIndex+1) / float64(totalRows))
     }
 
-    // Update the text boxes with new data
-    bodyUkData.Set(strings.Join(bodyUkResults, "\n"))
-    bodyRuData.Set(strings.Join(bodyRuResults, "\n"))
+    // Write the modified records back to a CSV file
+    updateStatus(statusBinding, "Writing to output file...")
+    err := writeCSV(records, outputFileName)
+    if err != nil {
+        return err
+    }
 
     return nil
 }
@@ -362,6 +352,26 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string) (string, error) {
 
     fmt.Printf("Downloaded image: %s\n", filePath)
     return relativePath, nil
+}
+
+// writeCSV writes the modified records back to a CSV file
+func writeCSV(records [][]string, outputFileName string) error {
+    file, err := os.Create(outputFileName)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    writer := csv.NewWriter(file)
+    defer writer.Flush()
+
+    for _, record := range records {
+        if err := writer.Write(record); err != nil {
+            return err
+        }
+    }
+
+    return nil
 }
 
 // showError displays an error dialog
