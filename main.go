@@ -74,8 +74,24 @@ func main() {
 		outputFileName := outputFileEntry.Text
 		selectedSeparator := separatorEntry.Selected
 
-		if spreadsheetURL == "" || hostname == "" || imagedir == "" || outputFileName == "" {
-			showError(myWindow, errors.New("Please fill in all required fields"))
+		// Collect missing fields
+		var missingFields []string
+		if spreadsheetURL == "" {
+			missingFields = append(missingFields, "Spreadsheet URL")
+		}
+		if hostname == "" {
+			missingFields = append(missingFields, "Hostname")
+		}
+		if imagedir == "" {
+			missingFields = append(missingFields, "Image Directory")
+		}
+		if outputFileName == "" {
+			missingFields = append(missingFields, "Output CSV File Name")
+		}
+
+		// Show detailed error message if any fields are missing
+		if len(missingFields) > 0 {
+			showError(myWindow, errors.New("Please fill in the following fields: "+strings.Join(missingFields, ", ")))
 			return
 		}
 
