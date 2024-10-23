@@ -289,7 +289,6 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 		}
 	}
 
-	totalRows := len(records) - 1
 	progressBinding.Set(0)
 
 	var allImageLinks []string
@@ -316,10 +315,15 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 		allImageLinks = append(allImageLinks, link)
 	}
 
+	totalImages := len(allImageLinks)
+	totalRows := len(records) - 1
+	totalSteps := totalImages + totalRows
+	var stepsCompleted int
+	var mu sync.Mutex
+
 	updateStatus(statusBinding, "Downloading images...")
 	// Download images
 	imagePathMap := make(map[string]string)
-	var mu sync.Mutex
 
 	var wg sync.WaitGroup
 	for _, link := range allImageLinks {
@@ -333,13 +337,23 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 			}
 			mu.Lock()
 			imagePathMap[link] = newPath
+			stepsCompleted++
+			progress := float64(stepsCompleted) / float64(totalSteps)
+			progressBinding.Set(progress)
+			statusString := fmt.Sprintf(
+				"Downloaded %d of %d images\nloading %s\n",
+				stepsCompleted,
+				totalImages,
+				link,
+			)
+			updateStatus(statusBinding, statusString)
 			mu.Unlock()
 		}(link)
 	}
 	wg.Wait()
 
 	// Replace image URLs in body_uk and body_ru
-	for rowIndex, row := range records[1:] {
+	for _, row := range records[1:] {
 		bodyUk := row[headerMap["body_uk"]]
 		bodyRu := row[headerMap["body_ru"]]
 
@@ -350,7 +364,11 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 		row[headerMap["body_ru"]] = newBodyRu
 
 		// Update progress bar
-		progressBinding.Set(float64(rowIndex+1) / float64(totalRows))
+		mu.Lock()
+		stepsCompleted++
+		progress := float64(stepsCompleted) / float64(totalSteps)
+		progressBinding.Set(progress)
+		mu.Unlock()
 	}
 
 	// Write the modified records back to a CSV file
