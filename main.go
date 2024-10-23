@@ -421,7 +421,7 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 	// Prepare the filename
 	parsedURL, err := url.Parse(imageURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Invalid image URL: %v", err)
 	}
 	filename := filepath.Base(parsedURL.Path)
 	filename = strings.Split(filename, "?")[0] // Remove query params
@@ -430,14 +430,15 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 	imageDirPath := filepath.Join("files", imagedir)
 	err = os.MkdirAll(imageDirPath, os.ModePerm)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to create directory: %v", err)
 	}
 
-	filePath := filepath.Join("files", imagedir, filename)
+	filePath := filepath.Join(imageDirPath, filename)
 	relativePath := filepath.ToSlash(imagedir + filename) // For replacement in HTML
 
 	// Skip download if file already exists
 	if _, err := os.Stat(filePath); err == nil {
+		fmt.Printf("File already exists: %s\n", filePath)
 		return relativePath, nil
 	}
 
@@ -445,30 +446,42 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", imageURL, nil)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to create HTTP request: %v", err)
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible)")
 	req.Header.Set("Accept", "*/*")
 
+	// Execute the request
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to execute HTTP request: %v", err)
 	}
 	defer resp.Body.Close()
 
+	// Check if the response is successful
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("Failed to download image: %s", resp.Status)
 	}
 
+	// Open the output file
 	out, err := os.Create(filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to create file: %v", err)
 	}
 	defer out.Close()
 
+	// Ensure the full response body is copied
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Failed to save image to file: %v", err)
+	}
+
+	// Check if the content length matches the downloaded file size
+	if resp.ContentLength > 0 {
+		stat, err := out.Stat()
+		if err == nil && stat.Size() != resp.ContentLength {
+			return "", fmt.Errorf("File size mismatch: expected %d bytes, got %d bytes", resp.ContentLength, stat.Size())
+		}
 	}
 
 	fmt.Printf("Downloaded image: %s\n", filePath)
