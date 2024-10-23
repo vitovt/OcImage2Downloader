@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"fyne.io/fyne/v2"
@@ -23,7 +24,11 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
+	"golang.org/x/net/http2"
 )
+
+const maxRetries = 3
+const timeout = 10 * time.Second // Timeout for HTTP client
 
 // transliteration table for Ukrainian and Russian Cyrillic characters
 var cyrillicToLatin = map[rune]string{
@@ -430,7 +435,7 @@ func replaceImageLinks(htmlContent string, imagePathMap map[string]string) strin
 	return newContent
 }
 
-// downloadAndSaveImage downloads an image from a URL and saves it to the desired path
+// downloadAndSaveImage downloads an image from a URL and saves it to the desired path with retry logic
 func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Window) (string, error) {
 	// Prepare the image URL
 	if strings.HasPrefix(imageURL, "//") {
@@ -492,26 +497,44 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 		return relativePath, nil
 	}
 
-	// Create HTTP client with custom headers
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", imageURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("Failed to create HTTP request: %v", err)
+	// Set up the HTTP client with a timeout
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: &http2.Transport{}, // Support for HTTP/2
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible)")
-	req.Header.Set("Accept", "*/*")
 
-	// Execute the request
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("Failed to execute HTTP request: %v", err)
+	var resp *http.Response
+	for retries := 0; retries < maxRetries; retries++ {
+		// Create HTTP request
+		req, err := http.NewRequest("GET", imageURL, nil)
+		if err != nil {
+			return "", fmt.Errorf("Failed to create HTTP request: %v", err)
+		}
+		req.Header.Set("User-Agent", "Mozilla/5.0 (compatible)")
+		req.Header.Set("Accept", "*/*")
+
+		// Execute the request
+		resp, err = client.Do(req)
+		if err != nil {
+			fmt.Printf("Retrying due to error: %v (attempt %d)\n", err, retries+1)
+			time.Sleep(2 * time.Second) // Wait before retrying
+			continue                    // Retry on failure
+		}
+
+		// Check if the response is successful
+		if resp.StatusCode == http.StatusOK {
+			break // Success, no need to retry
+		} else {
+			fmt.Printf("Received non-200 status code: %d. Retrying...\n", resp.StatusCode)
+			time.Sleep(2 * time.Second) // Wait before retrying
+		}
+	}
+
+	// If the response is still nil after retries, return an error
+	if resp == nil {
+		return "", fmt.Errorf("Failed to download image after %d attempts: %s", maxRetries, imageURL)
 	}
 	defer resp.Body.Close()
-
-	// Check if the response is successful
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Failed to download image: %s", resp.Status)
-	}
 
 	// Open the output file
 	out, err := os.Create(filePath)
