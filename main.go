@@ -337,8 +337,7 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 	}
 
 	totalImages := len(allImageLinks)
-	totalRows := len(records) - 1
-	totalSteps := totalImages + totalRows
+	totalSteps := totalImages
 	var stepsCompleted int
 	var mu sync.Mutex
 
