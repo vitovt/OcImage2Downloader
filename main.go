@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -423,8 +425,28 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 	if err != nil {
 		return "", fmt.Errorf("Invalid image URL: %v", err)
 	}
+
+	// Extract the filename and make it unique by appending part of the URL path
+	pathParts := strings.Split(parsedURL.Path, "/")
+	uniquePart := ""
+	if len(pathParts) >= 3 {
+		// Use the last two directories if available
+		uniquePart = strings.Join(pathParts[len(pathParts)-3:len(pathParts)-1], "_")
+	} else if len(pathParts) >= 2 {
+		// Use the last directory if only one directory exists
+		uniquePart = pathParts[len(pathParts)-2]
+	}
+
 	filename := filepath.Base(parsedURL.Path)
 	filename = strings.Split(filename, "?")[0] // Remove query params
+
+	// Generate a SHA-1 hash of the URL to make the filename unique
+	hasher := sha1.New()
+	hasher.Write([]byte(imageURL))
+	hash := hex.EncodeToString(hasher.Sum(nil))[:4] // Shorten the hash to 4 characters
+
+	// Combine the unique part with the filename
+	filename = hash + "-" + uniquePart + "-" + filename
 
 	// Ensure 'files' directory exists
 	imageDirPath := filepath.Join("files", imagedir)
