@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -23,6 +24,24 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
+
+// transliteration table for Ukrainian and Russian Cyrillic characters
+var cyrillicToLatin = map[rune]string{
+	// Ukrainian Cyrillic to Latin
+	'А': "A", 'Б': "B", 'В': "V", 'Г': "H", 'Ґ': "G", 'Д': "D", 'Е': "E", 'Є': "Ye", 'Ж': "Zh",
+	'З': "Z", 'И': "Y", 'І': "I", 'Ї': "Yi", 'Й': "Y", 'К': "K", 'Л': "L", 'М': "M", 'Н': "N",
+	'О': "O", 'П': "P", 'Р': "R", 'С': "S", 'Т': "T", 'У': "U", 'Ф': "F", 'Х': "Kh", 'Ц': "Ts",
+	'Ч': "Ch", 'Ш': "Sh", 'Щ': "Shch", 'Ю': "Yu", 'Я': "Ya", 'Ь': "",
+
+	// Lowercase Ukrainian Cyrillic
+	'а': "a", 'б': "b", 'в': "v", 'г': "h", 'ґ': "g", 'д': "d", 'е': "e", 'є': "ye", 'ж': "zh",
+	'з': "z", 'и': "y", 'і': "i", 'ї': "yi", 'й': "y", 'к': "k", 'л': "l", 'м': "m", 'н': "n",
+	'о': "o", 'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u", 'ф': "f", 'х': "kh", 'ц': "ts",
+	'ч': "ch", 'ш': "sh", 'щ': "shch", 'ю': "yu", 'я': "ya", 'ь': "",
+
+	// Russian Cyrillic (to provide additional support)
+	'Ё': "E", 'Ы': "Y", 'Э': "E", 'ё': "e", 'ы': "y", 'э': "e",
+}
 
 func main() {
 	myApp := app.New()
@@ -437,8 +456,15 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 		uniquePart = pathParts[len(pathParts)-2]
 	}
 
-	filename := filepath.Base(parsedURL.Path)
-	filename = strings.Split(filename, "?")[0] // Remove query params
+	filenameWithExt := filepath.Base(parsedURL.Path)
+	filenameWithExt = strings.Split(filenameWithExt, "?")[0] // Remove query params
+	extension := filepath.Ext(filenameWithExt)
+	if extension == "" {
+		extension = ".jpg" // Default to 'jpg' if no extension is present
+	} else {
+		// extension = extension[1:] // Remove the '.' from the extension
+	}
+	filename := strings.TrimSuffix(filenameWithExt, filepath.Ext(filenameWithExt))
 
 	// Generate a SHA-1 hash of the URL to make the filename unique
 	hasher := sha1.New()
@@ -447,6 +473,8 @@ func downloadAndSaveImage(imageURL, hostname, imagedir string, myWindow fyne.Win
 
 	// Combine the unique part with the filename
 	filename = hash + "-" + uniquePart + "-" + filename
+	filename = transliterate(filename)
+	filename = filename + extension
 
 	// Ensure 'files' directory exists
 	imageDirPath := filepath.Join("files", imagedir)
@@ -553,4 +581,34 @@ func showInfo(win fyne.Window, message string) {
 // updateStatus updates the status binding
 func updateStatus(statusBinding binding.String, status string) {
 	statusBinding.Set("Status: " + status)
+}
+
+// transliterate converts Cyrillic characters to Latin and cleans up the filename
+func transliterate(filename string) string {
+	var builder strings.Builder
+
+	// Step 1: Transliterate each character
+	for _, char := range filename {
+		if latin, found := cyrillicToLatin[char]; found {
+			builder.WriteString(latin)
+		} else {
+			builder.WriteRune(char) // Keep original character if not Cyrillic
+		}
+	}
+
+	// Step 2: Replace forbidden symbols with a dash
+	transliterated := builder.String()
+	transliterated = strings.ReplaceAll(transliterated, " ", "-")                      // Replace spaces with '-'
+	transliterated = regexp.MustCompile(`[^\w-]`).ReplaceAllString(transliterated, "") // Remove all non-word chars except '-'
+
+	// Step 3: Ensure only ASCII letters, numbers, and '-' remain
+	transliterated = strings.Map(func(r rune) rune {
+		if r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r // Keep ASCII letters, numbers, and '-'
+		}
+		return -1 // Remove other characters
+	}, transliterated)
+
+	// Step 4: Return the cleaned-up filename
+	return strings.ToLower(transliterated) // Convert the final filename to lowercase
 }
