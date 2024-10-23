@@ -135,14 +135,14 @@ func main() {
 				}
 
 				updateStatus(statusBinding, "Processing records...")
-				err = processRecords(records, hostname, imagedir, outputFileName, selectedSeparator, progressBinding, statusBinding, myWindow)
+				stepsCompleted, totalSteps, err := processRecords(records, hostname, imagedir, outputFileName, selectedSeparator, progressBinding, statusBinding, myWindow)
 				if err != nil {
 					showError(myWindow, err)
-					updateStatus(statusBinding, "Status: Idle")
+					updateStatus(statusBinding, fmt.Sprintf("Download particulary completed with errors, %d images of %d downloaded. Idle.", stepsCompleted, totalSteps))
 					return
 				}
 
-				updateStatus(statusBinding, "Status: Completed")
+				updateStatus(statusBinding, fmt.Sprintf("Download completed, %d images of %d downloaded", stepsCompleted, totalSteps))
 				showInfo(myWindow, "Images downloaded and data processed successfully.\nOutput saved to "+outputFileName)
 			}()
 		}
@@ -292,9 +292,9 @@ func fetchCSV(csvURL string) ([][]string, error) {
 }
 
 // processRecords processes the CSV data and downloads images
-func processRecords(records [][]string, hostname, imagedir string, outputFileName string, selectedSeparator string, progressBinding binding.Float, statusBinding binding.String, myWindow fyne.Window) error {
+func processRecords(records [][]string, hostname, imagedir string, outputFileName string, selectedSeparator string, progressBinding binding.Float, statusBinding binding.String, myWindow fyne.Window) (int, int, error) {
 	if len(records) < 2 {
-		return errors.New("No data in CSV")
+		return 0, 0, errors.New("No data in CSV")
 	}
 
 	headers := records[0]
@@ -306,7 +306,7 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 	requiredColumns := []string{"body_uk", "body_ru"}
 	for _, col := range requiredColumns {
 		if _, ok := headerMap[col]; !ok {
-			return fmt.Errorf("Missing required column: %s", col)
+			return 0, 0, fmt.Errorf("Missing required column: %s", col)
 		}
 	}
 
@@ -382,23 +382,16 @@ func processRecords(records [][]string, hostname, imagedir string, outputFileNam
 
 		row[headerMap["body_uk"]] = newBodyUk
 		row[headerMap["body_ru"]] = newBodyRu
-
-		// Update progress bar
-		mu.Lock()
-		stepsCompleted++
-		progress := float64(stepsCompleted) / float64(totalSteps)
-		progressBinding.Set(progress)
-		mu.Unlock()
 	}
 
 	// Write the modified records back to a CSV file
 	updateStatus(statusBinding, "Writing to output file...")
 	err := writeCSV(records, outputFileName, selectedSeparator)
 	if err != nil {
-		return err
+		return stepsCompleted, totalSteps, err
 	}
 
-	return nil
+	return stepsCompleted, totalSteps, nil
 }
 
 // extractImageLinks extracts image URLs from HTML content
